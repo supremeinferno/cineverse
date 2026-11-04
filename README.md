@@ -115,3 +115,9 @@ _Add screenshot_
 Pranav Garg
 
 GitHub: https://github.com/supremeinferno
+
+## Contributors
+
+[![Contributors](https://contrib.rocks/image?repo=supremeinferno/cineverse)](https://github.com/supremeinferno/cineverse/graphs/contributors)
+
+See the [full contribution history](https://github.com/supremeinferno/cineverse/graphs/contributors).
