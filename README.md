@@ -191,10 +191,6 @@ Run [`movies.ipynb`](movies.ipynb) from the project root. It reads `movies_metad
 - [ ] User accounts and watchlists
 - [ ] Personalized recommendations based on viewing history
 
-## Contributors
-
-[![Contributors](https://contrib.rocks/image?repo=supremeinferno/cineverse)](https://github.com/supremeinferno/cineverse/graphs/contributors)
-
 ## Author
 
 **Pranav Garg** · [GitHub](https://github.com/supremeinferno)
