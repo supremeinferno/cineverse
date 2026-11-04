@@ -6,12 +6,14 @@ The application provides real-time search, detailed movie information, trending 
 
 ## Live Demo
 
-https://supremeinferno-movies-recommender.streamlit.app
+https://cineverse-2czl.onrender.com
+
+Hosted on Render's free plan, so the first visit after 15 idle minutes can take about a minute to load.
 
 ## Features
 
 - Intelligent movie recommendations using TF-IDF similarity
-- Genre-based recommendation engine
+- Related-movie suggestions from TMDB
 - Real-time movie search
 - Trending, Top Rated, Upcoming, and Now Playing feeds
 - Detailed movie information pages
@@ -52,7 +54,7 @@ FastAPI Backend
  │
  ├── Recommendation Engine
  │      ├── TF-IDF Similarity
- │      └── Genre Matching
+ │      └── TMDB Related Movies
  │
  ▼
 TMDB API
@@ -61,6 +63,8 @@ TMDB API
 ## Running Locally
 
 ```bash
+git clone https://github.com/supremeinferno/cineverse.git
+cd cineverse
 python3.11 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 echo "TMDB_API_KEY=your_key" > .env
@@ -68,6 +72,15 @@ echo "TMDB_API_KEY=your_key" > .env
 ```
 
 Then open http://127.0.0.1:8000 (API docs are at `/docs`). Python 3.11 is required: the pinned packages don't install on 3.14.
+
+## Deployment
+
+The app is deployed on Render using the included `render.yaml`:
+
+- **Build command:** `pip install -r requirements.txt`
+- **Start command:** `uvicorn main:app --host 0.0.0.0 --port $PORT`
+- **Environment variable:** `TMDB_API_KEY`
+- **Python version:** set by `.python-version`
 
 ## Recommendation Approach
 
