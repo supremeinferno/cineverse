@@ -1,0 +1,442 @@
+/* =============================
+   STYLES — Apple TV+ inspired
+   ============================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+:root{
+    --bg:#000000;
+    --bg-soft:#0a0a0c;
+    --card:#141416;
+    --text:#f5f5f7;
+    --muted:#86868b;
+    --accent:#fa2d48;
+    --accent-soft:rgba(250,45,72,.14);
+    --border:rgba(255,255,255,.08);
+    --grid-cols:5;
+}
+
+*{ box-sizing:border-box; }
+
+html,body{
+    margin:0;
+    min-height:100%;
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+}
+
+body{ display:flex; }
+
+a{ color:inherit; text-decoration:none; }
+
+[hidden]{ display:none !important; }
+
+::-webkit-scrollbar{ width:8px; }
+::-webkit-scrollbar-track{ background:var(--bg); }
+::-webkit-scrollbar-thumb{ background:#2c2c2e; border-radius:999px; }
+::-webkit-scrollbar-thumb:hover{ background:#3a3a3c; }
+
+/* =========================
+   SIDEBAR
+   ========================= */
+
+.sidebar{
+    position:sticky;
+    top:0;
+    flex:0 0 280px;
+    height:100vh;
+    overflow-y:auto;
+    padding:24px;
+    background:var(--bg-soft);
+    border-right:1px solid var(--border);
+}
+
+.brand{ text-align:center; padding:10px 0 25px; }
+.brand-icon{ font-size:44px; margin-bottom:5px; }
+.brand-name{ font-size:28px; font-weight:800; letter-spacing:-1px; }
+.brand-tagline{ color:var(--muted); font-size:13px; margin-top:6px; }
+
+.sidebar-label{
+    color:#636366;
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:2px;
+    margin:32px 0 12px;
+}
+
+.slider{
+    display:flex;
+    justify-content:space-between;
+    font-size:14px;
+    margin-bottom:10px;
+}
+
+.slider output{ color:var(--accent); font-weight:600; }
+
+input[type="range"]{ width:100%; accent-color:var(--accent); }
+
+input[type="range"]:disabled{ opacity:.35; }
+
+.toggle{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-size:14px;
+    margin-top:20px;
+    cursor:pointer;
+}
+
+.toggle input{
+    width:18px;
+    height:18px;
+    margin:0;
+    accent-color:var(--accent);
+    cursor:pointer;
+}
+
+.sidebar-footer{
+    text-align:center;
+    color:#636366;
+    font-size:12px;
+    margin-top:32px;
+}
+
+/* =========================
+   LAYOUT
+   ========================= */
+
+main{
+    flex:1;
+    min-width:0;
+    max-width:1600px;
+    margin:0 auto;
+    padding:16px 48px 48px;
+}
+
+.hero{
+    position:relative;
+    min-height:460px;
+    border-radius:24px;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    padding:72px;
+    margin-bottom:48px;
+    background:
+        radial-gradient(ellipse 900px 500px at 20% 30%, var(--accent-soft), transparent 60%),
+        linear-gradient(rgba(0,0,0,.35), rgba(0,0,0,.95)),
+        url("https://images.unsplash.com/photo-1440404653325-ab127d49abc1");
+    background-size:cover;
+    background-position:center;
+    border:1px solid var(--border);
+    box-shadow:0 30px 90px rgba(0,0,0,.6);
+}
+
+.hero-title{
+    font-size:80px;
+    font-weight:800;
+    letter-spacing:-3px;
+    line-height:.98;
+}
+
+.hero-subtitle{
+    margin-top:18px;
+    max-width:680px;
+    font-size:19px;
+    line-height:1.7;
+    color:#c7c7cc;
+    font-weight:400;
+}
+
+.section-title{
+    font-size:32px;
+    font-weight:800;
+    letter-spacing:-1px;
+    margin-top:8px;
+    margin-bottom:18px;
+}
+
+.section-title.spaced{ margin-top:44px; }
+
+/* =========================
+   PREMIUM SEARCH BAR
+   ========================= */
+
+.search-box{
+    position:relative;
+    margin-top:10px;
+    margin-bottom:8px;
+}
+
+.search-box input{
+    position:relative;
+    z-index:1;
+    display:block;
+    width:100%;
+    height:72px;
+    padding:0 24px;
+    background:rgba(15,23,42,.90);
+    border:1px solid rgba(255,255,255,.08);
+    border-radius:22px;
+    outline:none;
+    color:#ffffff;
+    font:500 18px 'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+    box-shadow:
+        0 8px 30px rgba(0,0,0,.30),
+        inset 0 1px 0 rgba(255,255,255,.03);
+    transition:all .3s ease;
+}
+
+.search-box input:hover{
+    border-color:rgba(255,255,255,.18);
+    box-shadow:
+        0 12px 35px rgba(0,0,0,.35),
+        inset 0 1px 0 rgba(255,255,255,.05);
+}
+
+.search-box input:focus{
+    border-color:rgba(129,140,248,.55);
+    background:rgba(20,24,48,.92);
+    box-shadow:
+        0 0 0 4px rgba(99,102,241,.14),
+        0 0 24px rgba(129,140,248,.20),
+        0 15px 40px rgba(0,0,0,.40);
+}
+
+.search-box input::placeholder{
+    color:#94a3b8;
+    font-size:16px;
+    font-weight:400;
+    letter-spacing:.2px;
+}
+
+/* Animated rotating gradient glow around the box on focus */
+.search-box::before{
+    content:"";
+    position:absolute;
+    inset:-1px;
+    border-radius:24px;
+    padding:1.5px;
+    background:conic-gradient(
+        from var(--angle, 0deg),
+        #6366f1, #8b5cf6, #fa2d48, #6366f1
+    );
+    -webkit-mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite:xor;
+    mask-composite:exclude;
+    opacity:0;
+    transition:opacity .4s ease;
+    animation:rotateGlow 4s linear infinite;
+    pointer-events:none;
+    z-index:2;
+}
+
+.search-box:has(input:focus)::before{ opacity:1; }
+
+@keyframes rotateGlow{
+    to{ --angle:360deg; }
+}
+
+@property --angle{
+    syntax:'<angle>';
+    initial-value:0deg;
+    inherits:false;
+}
+
+.suggestions{
+    display:block;
+    width:100%;
+    margin-top:16px;
+    padding:12px 16px;
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:12px;
+    color:var(--text);
+    font:500 15px 'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+}
+
+/* =========================
+   POSTER GRID
+   ========================= */
+
+.poster-grid{
+    display:grid;
+    grid-template-columns:repeat(var(--grid-cols), minmax(0,1fr));
+    gap:20px;
+}
+
+.poster-card{ display:block; }
+
+.poster-card img,
+.poster-placeholder{
+    display:block;
+    width:100%;
+    aspect-ratio:2/3;
+    object-fit:cover;
+    border-radius:16px;
+    box-shadow:0 8px 24px rgba(0,0,0,.35);
+    transition:.3s cubic-bezier(.2,.8,.2,1);
+}
+
+.poster-placeholder{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:var(--card);
+    color:var(--muted);
+    font-size:14px;
+}
+
+.poster-card:hover img,
+.poster-card:hover .poster-placeholder{
+    transform:translateY(-6px) scale(1.025);
+    box-shadow:0 20px 40px rgba(0,0,0,.55);
+}
+
+.poster-card .button{ margin-top:12px; }
+
+.poster-card:hover .button{
+    background:var(--accent);
+    border-color:var(--accent);
+    color:white;
+}
+
+.movie-name{
+    margin-top:10px;
+    font-size:15px;
+    font-weight:600;
+}
+
+.button{
+    display:block;
+    width:100%;
+    text-align:center;
+    border:1px solid var(--border);
+    border-radius:12px;
+    background:var(--card);
+    color:var(--text);
+    font-size:14px;
+    font-weight:600;
+    padding:.5rem 1rem;
+    transition:.2s ease;
+}
+
+.button:hover{
+    background:var(--accent);
+    border-color:var(--accent);
+    color:white;
+    transform:translateY(-1px);
+}
+
+.button:active{ transform:translateY(0); }
+
+/* =========================
+   3D MODE
+   ========================= */
+
+.poster-ring{
+    position:relative;
+    height:520px;
+    border-radius:16px;
+    outline-offset:4px;
+}
+
+.poster-ring:focus-visible{ outline:2px solid var(--accent); }
+
+.poster-ring canvas{
+    display:block;
+    width:100%;
+    height:100%;
+    cursor:grab;
+    /* Horizontal drags spin the ring; vertical ones still scroll the page. */
+    touch-action:pan-y;
+}
+
+.poster-ring canvas:active{ cursor:grabbing; }
+
+.ring-caption{
+    position:absolute;
+    left:0;
+    right:0;
+    bottom:6px;
+    text-align:center;
+    font-size:15px;
+    font-weight:600;
+    pointer-events:none;
+}
+
+/* =========================
+   MOVIE DETAILS
+   ========================= */
+
+.details-actions{
+    display:flex;
+    justify-content:flex-end;
+    margin-bottom:24px;
+}
+
+.details-actions .button{ width:auto; min-width:140px; }
+
+.details{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,2.4fr);
+    gap:32px;
+    align-items:start;
+}
+
+.details-poster{ width:100%; display:block; border-radius:16px; }
+
+.movie-info-card{
+    background:var(--card);
+    border-radius:20px;
+    padding:28px;
+    border:1px solid var(--border);
+}
+
+.movie-info-card h1{ margin:0 0 15px; }
+.movie-release{ color:var(--accent); font-weight:600; margin-bottom:12px; }
+.movie-genres{ color:var(--muted); margin-bottom:20px; }
+.movie-overview{ line-height:1.9; }
+
+/* =========================
+   MESSAGES
+   ========================= */
+
+.message{
+    padding:14px 18px;
+    border-radius:12px;
+    background:var(--card);
+    border:1px solid var(--border);
+    color:var(--muted);
+    margin-top:16px;
+}
+
+.message.error{ color:#ff6b7f; border-color:rgba(250,45,72,.4); }
+
+@keyframes fadeUp{
+    from{ opacity:0; transform:translateY(10px); }
+    to{ opacity:1; transform:translateY(0); }
+}
+
+.hero, .movie-info-card{ animation:fadeUp .5s ease; }
+
+/* =========================
+   SMALL SCREENS
+   ========================= */
+
+@media (max-width:900px){
+    body{ display:block; }
+    .sidebar{
+        position:static;
+        height:auto;
+        border-right:none;
+        border-bottom:1px solid var(--border);
+    }
+    main{ padding:16px; }
+    .hero{ min-height:320px; padding:32px; }
+    .hero-title{ font-size:44px; letter-spacing:-1px; }
+    .details{ grid-template-columns:1fr; }
+    .poster-grid{ grid-template-columns:repeat(2, minmax(0,1fr)); }
+}

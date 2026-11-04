@@ -6,7 +6,8 @@ import numpy as np
 import pandas as pd
 import httpx
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -30,19 +31,14 @@ if not TMDB_API_KEY:
 # =========================
 app = FastAPI(title="Movie Recommender API", version="3.0")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # for local streamlit
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 
 # =========================
 # PICKLE GLOBALS
 # =========================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+INDEX_PATH = os.path.join(STATIC_DIR, "index.html")
 
 DF_PATH = os.path.join(BASE_DIR, "df.pkl")
 INDICES_PATH = os.path.join(BASE_DIR, "indices.pkl")
@@ -163,7 +159,7 @@ async def tmdb_movie_details(movie_id: int) -> TMDBMovieDetails:
 async def tmdb_search_movies(query: str, page: int = 1) -> Dict[str, Any]:
     """
     Raw TMDB response for keyword search (MULTIPLE results).
-    Streamlit will use this for suggestions and grid.
+    The frontend uses this for suggestions and grid.
     """
     return await tmdb_get(
         "/search/movie",
@@ -323,7 +319,7 @@ async def home(
     limit: int = Query(24, ge=1, le=50),
 ):
     """
-    Home feed for Streamlit (posters).
+    Home feed for the frontend (posters).
     category:
       - trending (trending/movie/day)
       - popular, top_rated, upcoming, now_playing  (movie/{category})
@@ -353,7 +349,7 @@ async def tmdb_search(
 ):
     """
     Returns RAW TMDB shape with 'results' list.
-    Streamlit will use it for:
+    The frontend uses it for:
       - dropdown suggestions
       - grid results
     """
@@ -474,3 +470,18 @@ async def search_bundle(
         tfidf_recommendations=tfidf_items,
         genre_recommendations=genre_recs,
     )
+
+
+# ---------- FRONTEND PAGES ----------
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/", include_in_schema=False)
+def index_page():
+    return FileResponse(INDEX_PATH)
+
+
+# Numeric IDs only, so this never shadows /movie/search or /movie/id/{tmdb_id}.
+@app.get("/movie/{tmdb_id:int}", include_in_schema=False)
+def movie_page(tmdb_id: int):
+    return FileResponse(INDEX_PATH)

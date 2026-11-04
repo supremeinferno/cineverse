@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CineVerse</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-icon">🎬</div>
+            <div class="brand-name">CineVerse</div>
+            <div class="brand-tagline">Discover • Explore • Watch</div>
+        </div>
+
+        <a class="button" href="/">🏠 Home</a>
+
+        <div class="sidebar-label">DISPLAY</div>
+        <label class="slider" for="grid-cols">
+            <span>Posters Per Row</span>
+            <output id="grid-cols-value" for="grid-cols"></output>
+        </label>
+        <input id="grid-cols" type="range" min="4" max="7" step="1">
+
+        <label class="toggle" for="three-mode">
+            <span>3D Mode</span>
+            <input id="three-mode" type="checkbox" role="switch">
+        </label>
+
+        <div class="sidebar-footer">Powered by TMDB</div>
+    </aside>
+
+    <main id="app"></main>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

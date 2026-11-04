@@ -2,7 +2,7 @@
 
 CineVerse AI is a movie recommendation platform that combines content-based filtering with live TMDB data to help users discover movies tailored to their interests.
 
-The application provides real-time search, detailed movie information, trending titles, and personalized recommendations through an interactive web interface built with Streamlit and FastAPI.
+The application provides real-time search, detailed movie information, trending titles, and personalized recommendations through an interactive web interface served by FastAPI.
 
 ## Live Demo
 
@@ -17,13 +17,15 @@ https://supremeinferno-movies-recommender.streamlit.app
 - Detailed movie information pages
 - TMDB API integration
 - Modern responsive user interface
+- Optional 3D Mode with interactive Three.js poster carousels
 - FastAPI-powered backend services
 
 ## Tech Stack
 
 **Frontend**
-- Streamlit
 - HTML/CSS
+- Vanilla JavaScript
+- Three.js (3D Mode)
 
 **Backend**
 - FastAPI
@@ -43,7 +45,7 @@ https://supremeinferno-movies-recommender.streamlit.app
 User
  │
  ▼
-Streamlit Frontend
+HTML/JS Frontend (served by FastAPI)
  │
  ▼
 FastAPI Backend
@@ -55,6 +57,16 @@ FastAPI Backend
  ▼
 TMDB API
 ```
+
+## Running Locally
+
+```bash
+pip install -r requirements.txt
+echo "TMDB_API_KEY=your_key" > .env
+uvicorn main:app --reload
+```
+
+Then open http://127.0.0.1:8000 (API docs are at `/docs`).
 
 ## Recommendation Approach
 
