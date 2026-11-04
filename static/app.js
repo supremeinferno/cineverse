@@ -3,9 +3,7 @@
 // =============================
 const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
 const SEARCH_DEBOUNCE_MS = 300;
-const GRID_COLS_KEY = "cineverse.gridCols";
-const THREE_MODE_KEY = "cineverse.threeMode";
-const threeMode = localStorage.getItem(THREE_MODE_KEY) === "on";
+const OVERVIEW_PREVIEW_CHARS = 220;
 
 const app = document.getElementById("app");
 
@@ -23,8 +21,8 @@ function message(text, isError = false) {
     return el("div", isError ? "message error" : "message", text);
 }
 
-function sectionTitle(text, spaced = true) {
-    return el("div", spaced ? "section-title spaced" : "section-title", text);
+function truncate(text, max) {
+    return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
 }
 
 async function apiGet(path, params = {}) {
@@ -37,25 +35,22 @@ async function apiGet(path, params = {}) {
     return response.json();
 }
 
-function posterGrid(cards) {
+function posterRing(cards, fallbackClass = "poster-rail") {
     if (!cards || !cards.length) return message("No movies to show.");
-    return threeMode ? posterRing(cards) : flatPosterGrid(cards);
-}
 
-function posterRing(cards) {
     const ring = el("div", "poster-ring");
-    // Without WebGL, or if three.js can't be downloaded, fall back to the flat grid.
+    // Without WebGL, or if three.js can't be downloaded, posters still have to show.
     import("/static/three-mode.js")
         .then(({ mountCarousel }) => mountCarousel(ring, cards))
         .catch((err) => {
             console.error("3D Mode unavailable:", err);
-            ring.replaceWith(flatPosterGrid(cards));
+            ring.replaceWith(flatPosters(cards, fallbackClass));
         });
     return ring;
 }
 
-function flatPosterGrid(cards) {
-    const grid = el("div", "poster-grid");
+function flatPosters(cards, className) {
+    const container = el("div", className);
     for (const movie of cards) {
         const title = movie.title || "Untitled";
         const card = el("a", "poster-card");
@@ -68,23 +63,20 @@ function flatPosterGrid(cards) {
             img.loading = "lazy";
             card.append(img);
         } else {
-            card.append(el("div", "poster-placeholder", "🖼️ No poster"));
+            card.append(el("div", "poster-placeholder", "No poster"));
         }
 
-        card.append(el("div", "button", "Open"), el("div", "movie-name", title));
-        grid.append(card);
-    }
-    return grid;
-}
+        card.append(el("div", "movie-name", title));
 
-function toCardsFromTfidfItems(items) {
-    return (items || [])
-        .filter((item) => item.tmdb && item.tmdb.tmdb_id)
-        .map((item) => ({
-            tmdb_id: item.tmdb.tmdb_id,
-            title: item.tmdb.title || item.title,
-            poster_url: item.tmdb.poster_url,
-        }));
+        const sub = el("div", "movie-sub");
+        if (movie.vote_average) sub.append(el("b", "", `★ ${movie.vote_average.toFixed(1)}`));
+        const year = (movie.release_date || "").slice(0, 4);
+        if (year) sub.append(`${movie.vote_average ? " · " : ""}${year}`);
+        if (sub.hasChildNodes()) card.append(sub);
+
+        container.append(card);
+    }
+    return container;
 }
 
 function parseTmdbSearch(data, keyword, limit = 24) {
@@ -95,93 +87,83 @@ function parseTmdbSearch(data, keyword, limit = 24) {
             title: movie.title.trim(),
             poster_url: movie.poster_path ? `${TMDB_IMG}${movie.poster_path}` : null,
             release_date: movie.release_date || "",
+            vote_average: movie.vote_average,
         }));
 
     const lowered = keyword.toLowerCase();
     const matched = items.filter((movie) => movie.title.toLowerCase().includes(lowered));
     const finalList = matched.length ? matched : items;
 
-    const suggestions = finalList.slice(0, 10).map((movie) => {
+    const suggestions = finalList.slice(0, 8).map((movie) => {
         const year = movie.release_date.slice(0, 4);
         return { label: year ? `${movie.title} (${year})` : movie.title, tmdb_id: movie.tmdb_id };
     });
     return { suggestions, cards: finalList.slice(0, limit) };
 }
 
-// =============================
-// SIDEBAR
-// =============================
-function setupGridSlider() {
-    const slider = document.getElementById("grid-cols");
-    const value = document.getElementById("grid-cols-value");
-
-    const apply = (cols) => {
-        slider.value = cols;
-        value.textContent = cols;
-        document.documentElement.style.setProperty("--grid-cols", cols);
-    };
-
-    // Rows only exist in the flat grid.
-    slider.disabled = threeMode;
-    apply(localStorage.getItem(GRID_COLS_KEY) || 5);
-    slider.addEventListener("input", () => {
-        localStorage.setItem(GRID_COLS_KEY, slider.value);
-        apply(slider.value);
-    });
-}
-
-function setupThreeToggle() {
-    const toggle = document.getElementById("three-mode");
-    toggle.checked = threeMode;
-    toggle.addEventListener("change", () => {
-        localStorage.setItem(THREE_MODE_KEY, toggle.checked ? "on" : "off");
-        window.location.reload();
-    });
+function setHeroBackdrop(hero, url) {
+    if (url) hero.style.backgroundImage = `url("${url}")`;
 }
 
 // ==========================================================
 // VIEW: HOME
 // ==========================================================
 const HOME_FEEDS = [
-    { title: "🔥 Trending", category: "trending" },
-    { title: "⭐ Top Rated", category: "top_rated" },
-    { title: "🎬 Upcoming", category: "upcoming" },
-    { title: "🍿 Now Playing", category: "now_playing" },
+    { title: "Trending", category: "trending" },
+    { title: "Top Rated", category: "top_rated" },
+    { title: "Upcoming", category: "upcoming" },
+    { title: "Now Playing", category: "now_playing" },
 ];
+
+async function renderFeaturedHero(hero, cards) {
+    if (!cards.length) return;
+    const movie = await apiGet(`/movie/id/${cards[0].tmdb_id}`);
+    setHeroBackdrop(hero, movie.backdrop_url);
+
+    const text = el("div", "hero-text");
+    const cta = el("a", "cta", "View details");
+    cta.href = `/movie/${movie.tmdb_id}`;
+    text.append(
+        el("div", "eyebrow", "Trending today"),
+        el("h1", "hero-title", movie.title),
+        el("p", "hero-overview", truncate(movie.overview || "", OVERVIEW_PREVIEW_CHARS)),
+        cta,
+    );
+    const content = el("div", "hero-content");
+    content.append(text);
+    hero.replaceChildren(content);
+}
 
 function renderHome() {
     document.title = "CineVerse";
 
-    const hero = el("div", "hero");
-    hero.append(
-        el("div", "hero-title", "CineVerse"),
-        el("div", "hero-subtitle",
-            "Discover trending films, timeless classics, hidden gems and personalized recommendations."),
-    );
-
-    const searchBox = el("div", "search-box");
-    const input = el("input");
-    input.type = "search";
-    input.placeholder = "Search movies, actors, genres...";
-    input.setAttribute("aria-label", "Search movies");
-    searchBox.append(input);
-
-    const results = el("div");
-    const feeds = el("div");
-    app.append(hero, sectionTitle("🔍 Discover Movies", false), searchBox, results, feeds);
+    const input = document.getElementById("search-input");
+    const suggestionsBox = document.getElementById("suggestions");
+    const hero = el("section", "hero");
+    const feeds = el("div", "sections");
+    const results = el("div", "sections below-nav");
+    results.hidden = true;
+    app.append(hero, feeds, results);
 
     let feedsLoaded = false;
     const showFeeds = () => {
+        results.hidden = true;
         results.replaceChildren();
+        suggestionsBox.replaceChildren();
+        hero.hidden = false;
         feeds.hidden = false;
         if (feedsLoaded) return;
         feedsLoaded = true;
+
         for (const feed of HOME_FEEDS) {
             const body = el("div");
-            body.append(message("Loading…"));
-            feeds.append(sectionTitle(feed.title), body);
+            body.append(el("div", "skeleton"));
+            feeds.append(el("h2", "section-title", feed.title), body);
             apiGet("/home", { category: feed.category, limit: 18 })
-                .then((cards) => body.replaceChildren(posterGrid(cards)))
+                .then((cards) => {
+                    body.replaceChildren(posterRing(cards));
+                    if (feed.category === "trending") return renderFeaturedHero(hero, cards);
+                })
                 .catch((err) => body.replaceChildren(message(`Could not load: ${err.message}`, true)));
         }
     };
@@ -192,13 +174,15 @@ function renderHome() {
         const searchId = ++latestSearch;
 
         // Keep the query in the URL so the back button returns to these results.
-        const url = query ? `/?q=${encodeURIComponent(query)}` : "/";
-        history.replaceState(null, "", url);
+        history.replaceState(null, "", query ? `/?q=${encodeURIComponent(query)}` : "/");
 
         if (!query) return showFeeds();
 
+        hero.hidden = true;
         feeds.hidden = true;
+        results.hidden = false;
         if (query.length < 2) {
+            suggestionsBox.replaceChildren();
             results.replaceChildren(message("Type at least 2 characters."));
             return;
         }
@@ -208,20 +192,15 @@ function renderHome() {
             if (searchId !== latestSearch) return;
 
             const { suggestions, cards } = parseTmdbSearch(data, query);
-            results.replaceChildren();
-
-            if (suggestions.length) {
-                const select = el("select", "suggestions");
-                select.setAttribute("aria-label", "Suggestions");
-                select.append(new Option("-- Select a Movie --", ""));
-                for (const s of suggestions) select.append(new Option(s.label, s.tmdb_id));
-                select.addEventListener("change", () => {
-                    if (select.value) window.location.href = `/movie/${select.value}`;
-                });
-                results.append(select);
-            }
-
-            results.append(sectionTitle("🎬 Search Results"), posterGrid(cards));
+            suggestionsBox.replaceChildren(...suggestions.map((s) => {
+                const link = el("a", "", s.label);
+                link.href = `/movie/${s.tmdb_id}`;
+                return link;
+            }));
+            results.replaceChildren(
+                el("h2", "section-title", `Results for “${query}”`),
+                posterRing(cards, "poster-grid"),
+            );
         } catch (err) {
             if (searchId !== latestSearch) return;
             results.replaceChildren(message(`Search failed: ${err.message}`, true));
@@ -233,6 +212,8 @@ function renderHome() {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => runSearch(input.value.trim()), SEARCH_DEBOUNCE_MS);
     });
+    // Results are already live here; on other pages Enter submits to /?q=.
+    input.form.addEventListener("submit", (event) => event.preventDefault());
 
     input.value = new URLSearchParams(window.location.search).get("q") || "";
     runSearch(input.value.trim());
@@ -242,88 +223,72 @@ function renderHome() {
 // VIEW: DETAILS
 // ==========================================================
 async function renderDetails(tmdbId) {
-    app.replaceChildren(message("Loading…"));
+    const loading = el("div", "sections below-nav");
+    loading.append(el("div", "skeleton"));
+    app.replaceChildren(loading);
 
     let data;
     try {
         data = await apiGet(`/movie/id/${tmdbId}`);
     } catch (err) {
-        app.replaceChildren(message(`Could not load details: ${err.message}`, true));
+        loading.replaceChildren(message(`Could not load details: ${err.message}`, true));
         return;
     }
 
     const title = data.title || "Movie";
-    const overview = data.overview || "No overview available.";
     document.title = `${title} · CineVerse`;
-    app.replaceChildren();
 
-    if (data.backdrop_url) {
-        const hero = el("div", "hero");
-        hero.style.minHeight = "480px";
-        hero.style.backgroundImage = `
-            radial-gradient(ellipse 900px 500px at 20% 30%, rgba(250,45,72,.14), transparent 60%),
-            linear-gradient(rgba(0,0,0,.35), rgba(0,0,0,.94)),
-            url("${data.backdrop_url}")`;
-        hero.append(el("div", "hero-title", title), el("div", "hero-subtitle", overview.slice(0, 300)));
-        app.append(hero);
-    }
+    const hero = el("section", "hero");
+    setHeroBackdrop(hero, data.backdrop_url);
 
-    const actions = el("div", "details-actions");
-    const homeLink = el("a", "button", "🏠 Home");
-    homeLink.href = "/";
-    actions.append(homeLink);
-    app.append(actions);
-
-    const details = el("div", "details");
-    const posterColumn = el("div");
+    const content = el("div", "hero-content");
     if (data.poster_url) {
-        const poster = el("img", "details-poster");
+        const poster = el("img", "hero-poster");
         poster.src = data.poster_url;
         poster.alt = title;
-        posterColumn.append(poster);
+        content.append(poster);
     }
 
-    const info = el("div", "movie-info-card");
-    info.append(
-        el("h1", "", data.title || ""),
-        el("div", "movie-release", `📅 ${data.release_date || "-"}`),
-        el("div", "movie-genres", `🎭 ${(data.genres || []).map((g) => g.name).join(", ")}`),
-        el("div", "movie-overview", overview),
+    const meta = el("div", "meta");
+    if (data.release_date) meta.append(el("span", "meta-date", data.release_date.slice(0, 4)));
+    for (const genre of data.genres || []) meta.append(el("span", "chip", genre.name));
+
+    const text = el("div", "hero-text");
+    text.append(
+        el("h1", "hero-title", title),
+        meta,
+        el("p", "hero-overview", data.overview || "No overview available."),
     );
-    details.append(posterColumn, info);
-    app.append(details);
+    content.append(text);
+    hero.append(content);
 
-    app.append(sectionTitle("🔎 Similar Movies"));
+    const sections = el("div", "sections");
     const similar = el("div");
-    similar.append(message("Loading recommendations…"));
-    app.append(similar);
-
-    const query = (data.title || "").trim();
-    if (!query) {
-        similar.replaceChildren(message("No recommendations available."));
-        return;
-    }
+    similar.append(el("div", "skeleton"));
+    sections.append(el("h2", "section-title", "Similar Movies"), similar);
+    app.replaceChildren(hero, sections);
 
     try {
-        const bundle = await apiGet("/movie/search", { query, tfidf_top_n: 12, genre_limit: 12 });
-        similar.replaceChildren(posterGrid(toCardsFromTfidfItems(bundle.tfidf_recommendations)));
-        app.append(sectionTitle("🎭 More Like This"), posterGrid(bundle.genre_recommendations));
-    } catch {
-        try {
-            const genreOnly = await apiGet("/recommend/genre", { tmdb_id: tmdbId, limit: 18 });
-            similar.replaceChildren(posterGrid(genreOnly));
-        } catch {
-            similar.replaceChildren(message("No recommendations available."));
+        const recs = await apiGet(`/movie/id/${tmdbId}/similar`, { limit: 12 });
+        if (!recs.similar.length) {
+            similar.replaceChildren(message("No similar movies found."));
+            return;
         }
+        similar.replaceChildren(posterRing(recs.similar));
+        if (recs.more_like_this.length) {
+            sections.append(
+                el("h2", "section-title", "More Like This"),
+                posterRing(recs.more_like_this),
+            );
+        }
+    } catch (err) {
+        similar.replaceChildren(message(`Could not load recommendations: ${err.message}`, true));
     }
 }
 
 // ==========================================================
 // ROUTER
 // ==========================================================
-setupGridSlider();
-setupThreeToggle();
-
 const movieMatch = window.location.pathname.match(/^\/movie\/(\d+)$/);
 if (movieMatch) {
     renderDetails(movieMatch[1]);

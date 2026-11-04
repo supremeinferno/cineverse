@@ -16,6 +16,7 @@ const AUTO_SPIN = 0.0025;
 const DRAG_SPEED = 0.006;
 const FRICTION = 0.94;
 const CLICK_TOLERANCE_PX = 5;
+const MIN_AUTO_SPIN_POSTERS = 6;
 
 function posterGeometry() {
     const [w, h, r] = [POSTER_W / 2, POSTER_H / 2, CORNER];
@@ -44,9 +45,9 @@ function placeholderTexture(title) {
     canvas.width = 256;
     canvas.height = 384;
     const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#141416";
+    ctx.fillStyle = "#1e1a28";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "#86868b";
+    ctx.fillStyle = "#b3abbd";
     ctx.font = "600 22px Inter, sans-serif";
     ctx.textAlign = "center";
 
@@ -81,6 +82,8 @@ export function mountCarousel(container, cards) {
     const step = (Math.PI * 2) / count;
     const radius = Math.max((count * (POSTER_W + POSTER_GAP)) / (Math.PI * 2), MIN_RADIUS);
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // With only a few posters, spinning leaves the ring looking empty.
+    const autoSpin = !reducedMotion && count >= MIN_AUTO_SPIN_POSTERS;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -88,10 +91,30 @@ export function mountCarousel(container, cards) {
 
     const caption = document.createElement("div");
     caption.className = "ring-caption";
+    caption.setAttribute("aria-hidden", "true");
+    const captionTitle = document.createElement("div");
+    captionTitle.className = "ring-caption-title";
+    const captionMeta = document.createElement("div");
+    captionMeta.className = "ring-caption-meta";
+    caption.append(captionTitle, captionMeta);
     container.append(caption);
 
+    // The canvas is invisible to screen readers, so mirror the movies as links.
+    const movieLinks = document.createElement("ul");
+    movieLinks.className = "sr-only";
+    for (const movie of cards) {
+        const item = document.createElement("li");
+        const link = document.createElement("a");
+        link.href = `/movie/${movie.tmdb_id}`;
+        link.textContent = movie.title || "Untitled";
+        link.tabIndex = -1;
+        item.append(link);
+        movieLinks.append(item);
+    }
+    container.append(movieLinks);
+
     const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x000000);
+    scene.fog = new THREE.Fog(0x110e17);
     const camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 100);
 
     const ring = new THREE.Group();
@@ -110,7 +133,13 @@ export function mountCarousel(container, cards) {
         const angle = i * step;
         mesh.position.set(Math.sin(angle) * radius, 0, Math.cos(angle) * radius);
         mesh.rotation.y = angle;
-        mesh.userData = { href: `/movie/${movie.tmdb_id}`, title };
+        const year = (movie.release_date || "").slice(0, 4);
+        const rating = movie.vote_average ? `★ ${movie.vote_average.toFixed(1)}` : "";
+        mesh.userData = {
+            href: `/movie/${movie.tmdb_id}`,
+            title,
+            meta: [rating, year].filter(Boolean).join(" · "),
+        };
         ring.add(mesh);
 
         if (movie.poster_url) {
@@ -119,6 +148,7 @@ export function mountCarousel(container, cards) {
             loader.load(`${movie.poster_url}?cors=1`, (loaded) => {
                 if (disposed) return loaded.dispose();
                 loaded.colorSpace = THREE.SRGBColorSpace;
+                loaded.anisotropy = renderer.capabilities.getMaxAnisotropy();
                 textures.push(loaded);
                 material.map = loaded;
                 material.needsUpdate = true;
@@ -177,6 +207,24 @@ export function mountCarousel(container, cards) {
     let dragStartX = 0;
     let lastX = 0;
 
+    function rotateBy(direction) {
+        targetRotation = (Math.round(ring.rotation.y / step) + direction) * step;
+        velocity = 0;
+    }
+
+    for (const [label, symbol, direction, side] of [
+        ["Previous movie", "‹", 1, "prev"],
+        ["Next movie", "›", -1, "next"],
+    ]) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `ring-arrow ${side}`;
+        button.setAttribute("aria-label", label);
+        button.textContent = symbol;
+        button.addEventListener("click", () => rotateBy(direction));
+        container.append(button);
+    }
+
     const canvas = renderer.domElement;
     canvas.addEventListener("pointerdown", (event) => {
         dragging = true;
@@ -211,9 +259,7 @@ export function mountCarousel(container, cards) {
     container.addEventListener("keydown", (event) => {
         if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
             event.preventDefault();
-            const index = Math.round(ring.rotation.y / step);
-            targetRotation = (index + (event.key === "ArrowLeft" ? 1 : -1)) * step;
-            velocity = 0;
+            rotateBy(event.key === "ArrowLeft" ? 1 : -1);
         } else if (event.key === "Enter") {
             window.location.href = frontMesh().userData.href;
         }
@@ -243,7 +289,7 @@ export function mountCarousel(container, cards) {
         } else if (!dragging) {
             velocity *= FRICTION;
             ring.rotation.y += velocity;
-            if (!hovered && !focused && !reducedMotion) ring.rotation.y += AUTO_SPIN;
+            if (!hovered && !focused && autoSpin) ring.rotation.y += AUTO_SPIN;
         }
 
         for (const mesh of meshes) {
@@ -251,7 +297,11 @@ export function mountCarousel(container, cards) {
             mesh.scale.setScalar(mesh.scale.x + (scale - mesh.scale.x) * 0.15);
         }
 
-        caption.textContent = (hovered || frontMesh()).userData.title;
+        const { title, meta } = (hovered || frontMesh()).userData;
+        if (captionTitle.textContent !== title) {
+            captionTitle.textContent = title;
+            captionMeta.textContent = meta;
+        }
         renderer.render(scene, camera);
     });
 }

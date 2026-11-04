@@ -1,3 +1,4 @@
+import asyncio
 import os
 import pickle
 from typing import Optional, List, Dict, Any, Tuple
@@ -21,6 +22,11 @@ TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 TMDB_BASE = "https://api.themoviedb.org/3"
 TMDB_IMG_500 = "https://image.tmdb.org/t/p/w500"
 
+# Most of the dataset is obscure (median popularity ~1), and plain cosine
+# similarity happily surfaces it. Keep recommendations to films people know.
+MIN_REC_POPULARITY = 5.0
+MAX_CONCURRENT_TMDB_LOOKUPS = 8
+
 if not TMDB_API_KEY:
     # Don't crash import-time in production if you prefer; but for you better fail early:
     raise RuntimeError("TMDB_API_KEY missing. Put it in .env as TMDB_API_KEY=xxxx")
@@ -40,10 +46,12 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 INDEX_PATH = os.path.join(STATIC_DIR, "index.html")
 
-DF_PATH = os.path.join(BASE_DIR, "df.pkl")
-INDICES_PATH = os.path.join(BASE_DIR, "indices.pkl")
-TFIDF_MATRIX_PATH = os.path.join(BASE_DIR, "tfidf_matrix.pkl")
-TFIDF_PATH = os.path.join(BASE_DIR, "tfidf.pkl")
+PKL_DIR = os.path.join(BASE_DIR, "pkl")
+
+DF_PATH = os.path.join(PKL_DIR, "df.pkl")
+INDICES_PATH = os.path.join(PKL_DIR, "indices.pkl")
+TFIDF_MATRIX_PATH = os.path.join(PKL_DIR, "tfidf_matrix.pkl")
+TFIDF_PATH = os.path.join(PKL_DIR, "tfidf.pkl")
 
 df: Optional[pd.DataFrame] = None
 indices_obj: Any = None
@@ -51,6 +59,10 @@ tfidf_matrix: Any = None
 tfidf_obj: Any = None
 
 TITLE_TO_IDX: Optional[Dict[str, int]] = None
+
+NORM_TITLES: Optional[np.ndarray] = None
+POPULARITY: Optional[np.ndarray] = None
+GENRE_SETS: Optional[List[set]] = None
 
 
 # =========================
@@ -72,6 +84,12 @@ class TMDBMovieDetails(BaseModel):
     poster_url: Optional[str] = None
     backdrop_url: Optional[str] = None
     genres: List[dict] = []
+    tagline: Optional[str] = None
+
+
+class SimilarMoviesResponse(BaseModel):
+    similar: List[TMDBMovieCard]
+    more_like_this: List[TMDBMovieCard]
 
 
 class TFIDFRecItem(BaseModel):
@@ -153,6 +171,7 @@ async def tmdb_movie_details(movie_id: int) -> TMDBMovieDetails:
         poster_url=make_img_url(data.get("poster_path")),
         backdrop_url=make_img_url(data.get("backdrop_path")),
         genres=data.get("genres", []) or [],
+        tagline=data.get("tagline"),
     )
 
 
@@ -253,6 +272,102 @@ def tfidf_recommend_titles(
     return out
 
 
+def tfidf_recommend_for_movie(details: TMDBMovieDetails, top_n: int) -> List[str]:
+    """
+    Content-based titles for ANY movie, including ones newer than the dataset:
+    vectorizes the movie's live TMDB text instead of looking its title up locally.
+    Ranks by similarity weighted by popularity, within shared genres.
+    """
+    if tfidf_matrix is None or tfidf_obj is None:
+        raise HTTPException(status_code=500, detail="TF-IDF resources not loaded")
+
+    genre_names = [g["name"] for g in details.genres]
+    # Same field recipe as df["tags"] in movies.ipynb.
+    text = f"{details.overview or ''} {' '.join(genre_names)} {details.tagline or ''}"
+    query_vector = tfidf_obj.transform([text])
+    if query_vector.nnz == 0:
+        return []
+
+    scores = (tfidf_matrix @ query_vector.T).toarray().ravel()
+    ranked = np.where(POPULARITY >= MIN_REC_POPULARITY, scores * np.log1p(POPULARITY), 0)
+
+    source_genres = set(" ".join(genre_names).lower().split())
+    seen = {_norm_title(details.title)}
+    out: List[str] = []
+    for i in np.argsort(-ranked):
+        i = int(i)
+        if ranked[i] <= 0:
+            break
+        if NORM_TITLES[i] in seen or (source_genres and not source_genres & GENRE_SETS[i]):
+            continue
+        seen.add(NORM_TITLES[i])
+        out.append(str(df.iloc[i]["title"]))
+        if len(out) >= top_n:
+            break
+    return out
+
+
+async def exact_tmdb_card_by_title(
+    title: str, semaphore: asyncio.Semaphore
+) -> Optional[TMDBMovieCard]:
+    """
+    TMDB's search is fuzzy: "Hero" returns "Big Hero 6" first. Only accept an
+    exact title match with a poster, so a card can't show the wrong movie.
+    """
+    try:
+        async with semaphore:
+            data = await tmdb_search_movies(query=title)
+    except HTTPException:
+        return None
+
+    key = _norm_title(title)
+    matches = [
+        m
+        for m in data.get("results", [])
+        if _norm_title(m.get("title") or "") == key and m.get("poster_path")
+    ]
+    if not matches:
+        return None
+    best = max(matches, key=lambda m: m.get("popularity") or 0)
+    return TMDBMovieCard(
+        tmdb_id=int(best["id"]),
+        title=best["title"],
+        poster_url=make_img_url(best["poster_path"]),
+        release_date=best.get("release_date"),
+        vote_average=best.get("vote_average"),
+    )
+
+
+async def tmdb_related_cards(details: TMDBMovieDetails) -> List[TMDBMovieCard]:
+    """TMDB's related movies, most relevant source first, posters only."""
+    sources: List[Tuple[str, Dict[str, Any]]] = [
+        (f"/movie/{details.tmdb_id}/recommendations", {"language": "en-US"}),
+        (f"/movie/{details.tmdb_id}/similar", {"language": "en-US"}),
+    ]
+    if details.genres:
+        sources.append(
+            (
+                "/discover/movie",
+                {
+                    "with_genres": details.genres[0]["id"],
+                    "language": "en-US",
+                    "sort_by": "popularity.desc",
+                },
+            )
+        )
+
+    for path, params in sources:
+        try:
+            data = await tmdb_get(path, params)
+        except HTTPException:
+            continue
+        results = [m for m in data.get("results", []) if m.get("poster_path")]
+        cards = await tmdb_cards_from_results(results, limit=len(results))
+        if cards:
+            return cards
+    return []
+
+
 async def attach_tmdb_card_by_title(title: str) -> Optional[TMDBMovieCard]:
     """
     Uses TMDB search by title to fetch poster for a local title.
@@ -279,6 +394,7 @@ async def attach_tmdb_card_by_title(title: str) -> Optional[TMDBMovieCard]:
 @app.on_event("startup")
 def load_pickles():
     global df, indices_obj, tfidf_matrix, tfidf_obj, TITLE_TO_IDX
+    global NORM_TITLES, POPULARITY, GENRE_SETS
 
     # Load df
     with open(DF_PATH, "rb") as f:
@@ -302,6 +418,11 @@ def load_pickles():
     # sanity
     if df is None or "title" not in df.columns:
         raise RuntimeError("df.pkl must contain a DataFrame with a 'title' column")
+
+    NORM_TITLES = df["title"].map(_norm_title).to_numpy()
+    POPULARITY = pd.to_numeric(df["popularity"], errors="coerce").fillna(0).to_numpy()
+    # The dataset joins genre names with spaces, so compare genres word by word.
+    GENRE_SETS = [set(str(genres).lower().split()) for genres in df["genres"].fillna("")]
 
 
 # =========================
@@ -360,6 +481,45 @@ async def tmdb_search(
 @app.get("/movie/id/{tmdb_id}", response_model=TMDBMovieDetails)
 async def movie_details_route(tmdb_id: int):
     return await tmdb_movie_details(tmdb_id)
+
+
+# ---------- SIMILAR MOVIES (DETAILS PAGE) ----------
+@app.get("/movie/id/{tmdb_id}/similar", response_model=SimilarMoviesResponse)
+async def similar_movies_route(
+    tmdb_id: int,
+    limit: int = Query(12, ge=1, le=30),
+):
+    """
+    - similar: content-based, from the TF-IDF model
+    - more_like_this: TMDB's own related movies
+    """
+    details = await tmdb_movie_details(tmdb_id)
+
+    # Some titles won't resolve to an exact TMDB match, so over-fetch.
+    titles = tfidf_recommend_for_movie(details, top_n=limit * 2)
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_TMDB_LOOKUPS)
+    resolved = await asyncio.gather(
+        *(exact_tmdb_card_by_title(title, semaphore) for title in titles)
+    )
+
+    seen = {tmdb_id}
+    similar: List[TMDBMovieCard] = []
+    for card in resolved:
+        if card and card.tmdb_id not in seen and len(similar) < limit:
+            seen.add(card.tmdb_id)
+            similar.append(card)
+
+    more_like_this: List[TMDBMovieCard] = []
+    for card in await tmdb_related_cards(details):
+        if card.tmdb_id not in seen and len(more_like_this) < limit:
+            seen.add(card.tmdb_id)
+            more_like_this.append(card)
+
+    # A movie with no overview gives TF-IDF nothing to work with.
+    if not similar:
+        similar, more_like_this = more_like_this, []
+
+    return SimilarMoviesResponse(similar=similar, more_like_this=more_like_this)
 
 
 # ---------- GENRE RECOMMENDATIONS ----------
