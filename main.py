@@ -74,6 +74,7 @@ class TMDBMovieCard(BaseModel):
     poster_url: Optional[str] = None
     release_date: Optional[str] = None
     vote_average: Optional[float] = None
+    overview: Optional[str] = None
 
 
 class TMDBMovieDetails(BaseModel):
@@ -85,6 +86,8 @@ class TMDBMovieDetails(BaseModel):
     backdrop_url: Optional[str] = None
     genres: List[dict] = []
     tagline: Optional[str] = None
+    vote_average: Optional[float] = None
+    runtime: Optional[int] = None
 
 
 class SimilarMoviesResponse(BaseModel):
@@ -156,6 +159,7 @@ async def tmdb_cards_from_results(
                 poster_url=make_img_url(m.get("poster_path")),
                 release_date=m.get("release_date"),
                 vote_average=m.get("vote_average"),
+                overview=m.get("overview"),
             )
         )
     return out
@@ -172,6 +176,8 @@ async def tmdb_movie_details(movie_id: int) -> TMDBMovieDetails:
         backdrop_url=make_img_url(data.get("backdrop_path")),
         genres=data.get("genres", []) or [],
         tagline=data.get("tagline"),
+        vote_average=data.get("vote_average"),
+        runtime=data.get("runtime"),
     )
 
 
@@ -335,6 +341,7 @@ async def exact_tmdb_card_by_title(
         poster_url=make_img_url(best["poster_path"]),
         release_date=best.get("release_date"),
         vote_average=best.get("vote_average"),
+        overview=best.get("overview"),
     )
 
 

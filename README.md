@@ -17,7 +17,7 @@ https://supremeinferno-movies-recommender.streamlit.app
 - Detailed movie information pages
 - TMDB API integration
 - Modern responsive user interface
-- Interactive 3D poster carousels built with Three.js
+- Full-screen 3D poster carousel built with Three.js
 - FastAPI-powered backend services
 
 ## Tech Stack

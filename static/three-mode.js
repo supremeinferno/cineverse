@@ -1,22 +1,23 @@
 // =============================
-// 3D MODE — Three.js poster carousels
-// Loaded on demand by app.js, only while 3D Mode is switched on.
+// 3D poster carousel (Three.js)
+// Loaded on demand by app.js.
 // =============================
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js";
 
 const POSTER_W = 2;
 const POSTER_H = 3;
-const POSTER_GAP = 0.4;
-const CORNER = 0.12;
+const POSTER_GAP = 0.45;
+const CORNER = 0.1;
 const MIN_RADIUS = 3;
 const MIN_VISIBLE_WIDTH = 4;
-const CAMERA_DISTANCE = 5;
+const CAMERA_DISTANCE = 5.4;
 const FOV = 45;
-const AUTO_SPIN = 0.0025;
+const WIDE_LAYOUT_PX = 900;
+const AUTO_ADVANCE_MS = 5500;
+const ROTATION_EASE = 0.09;
 const DRAG_SPEED = 0.006;
-const FRICTION = 0.94;
+const FLICK_PROJECTION = 6;
 const CLICK_TOLERANCE_PX = 5;
-const MIN_AUTO_SPIN_POSTERS = 6;
 
 function posterGeometry() {
     const [w, h, r] = [POSTER_W / 2, POSTER_H / 2, CORNER];
@@ -72,32 +73,21 @@ function placeholderTexture(title) {
     return texture;
 }
 
-// Builds a carousel inside `container`. It disposes itself (freeing its WebGL
-// context) once the container leaves the page, e.g. when a new search renders.
-export function mountCarousel(container, cards) {
+// Builds a carousel inside `container` and calls onFocus(movie, index) whenever a
+// new poster reaches the front. It disposes itself (freeing its WebGL context)
+// once the container leaves the page, e.g. when the category changes.
+export function mountCarousel(container, cards, { onFocus }) {
     // The view already moved on while three.js was downloading.
-    if (!container.isConnected) return;
+    if (!container.isConnected) return null;
 
     const count = cards.length;
     const step = (Math.PI * 2) / count;
     const radius = Math.max((count * (POSTER_W + POSTER_GAP)) / (Math.PI * 2), MIN_RADIUS);
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    // With only a few posters, spinning leaves the ring looking empty.
-    const autoSpin = !reducedMotion && count >= MIN_AUTO_SPIN_POSTERS;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     container.append(renderer.domElement);
-
-    const caption = document.createElement("div");
-    caption.className = "ring-caption";
-    caption.setAttribute("aria-hidden", "true");
-    const captionTitle = document.createElement("div");
-    captionTitle.className = "ring-caption-title";
-    const captionMeta = document.createElement("div");
-    captionMeta.className = "ring-caption-meta";
-    caption.append(captionTitle, captionMeta);
-    container.append(caption);
 
     // The canvas is invisible to screen readers, so mirror the movies as links.
     const movieLinks = document.createElement("ul");
@@ -114,37 +104,30 @@ export function mountCarousel(container, cards) {
     container.append(movieLinks);
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x110e17);
     const camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 100);
 
     const ring = new THREE.Group();
     scene.add(ring);
 
+    let disposed = false;
     const geometry = posterGeometry();
     const loader = new THREE.TextureLoader();
     const textures = [];
     const meshes = cards.map((movie, i) => {
-        const title = movie.title || "Untitled";
-        const texture = placeholderTexture(title);
+        const texture = placeholderTexture(movie.title || "Untitled");
         textures.push(texture);
 
-        const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true });
+        const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false });
         const mesh = new THREE.Mesh(geometry, material);
         const angle = i * step;
         mesh.position.set(Math.sin(angle) * radius, 0, Math.cos(angle) * radius);
         mesh.rotation.y = angle;
-        const year = (movie.release_date || "").slice(0, 4);
-        const rating = movie.vote_average ? `★ ${movie.vote_average.toFixed(1)}` : "";
-        mesh.userData = {
-            href: `/movie/${movie.tmdb_id}`,
-            title,
-            meta: [rating, year].filter(Boolean).join(" · "),
-        };
+        mesh.userData = { index: i, angle, href: `/movie/${movie.tmdb_id}` };
         ring.add(mesh);
 
         if (movie.poster_url) {
-            // Flat mode caches posters from plain <img> requests, without the CORS
-            // headers WebGL needs. A distinct URL keeps this from reusing that copy.
+            // Plain <img> tags cache posters without the CORS headers WebGL needs.
+            // A distinct URL keeps this request from reusing that copy.
             loader.load(`${movie.poster_url}?cors=1`, (loaded) => {
                 if (disposed) return loaded.dispose();
                 loaded.colorSpace = THREE.SRGBColorSpace;
@@ -165,10 +148,13 @@ export function mountCarousel(container, cards) {
         camera.aspect = width / height;
         // Back the camera up on narrow screens so posters don't get cropped.
         const fit = MIN_VISIBLE_WIDTH / (2 * Math.tan(THREE.MathUtils.degToRad(FOV / 2)) * camera.aspect);
-        const distance = Math.max(CAMERA_DISTANCE, fit);
-        camera.position.set(0, 0, radius + distance);
-        scene.fog.near = distance + radius * 0.4;
-        scene.fog.far = distance + radius * 1.1;
+        camera.position.set(0, 0, radius + Math.max(CAMERA_DISTANCE, fit));
+        // On wide screens the info panel sits left, so centre the ring in the space right of it.
+        if (width >= WIDE_LAYOUT_PX) {
+            camera.setViewOffset(width, height, -width * 0.2, 0, width, height);
+        } else {
+            camera.clearViewOffset();
+        }
         camera.updateProjectionMatrix();
     }
     const resizeObserver = new ResizeObserver(resize);
@@ -191,44 +177,39 @@ export function mountCarousel(container, cards) {
             -((event.clientY - rect.top) / rect.height) * 2 + 1,
         );
         raycaster.setFromCamera(pointer, camera);
-        return raycaster.intersectObjects(meshes)[0]?.object || null;
+        const facingCamera = raycaster.intersectObjects(meshes)
+            .filter((hit) => Math.cos(hit.object.userData.angle + ring.rotation.y) > 0);
+        return facingCamera[0]?.object || null;
     }
 
-    // The poster currently turned closest to the camera.
-    function frontMesh() {
+    const frontIndex = () => {
         const index = Math.round(-ring.rotation.y / step);
-        return meshes[((index % count) + count) % count];
-    }
+        return ((index % count) + count) % count;
+    };
 
+    let target = 0;
     let dragging = false;
     let hovered = null;
     let velocity = 0;
-    let targetRotation = null;
     let dragStartX = 0;
     let lastX = 0;
+    let idleMs = 0;
 
     function rotateBy(direction) {
-        targetRotation = (Math.round(ring.rotation.y / step) + direction) * step;
-        velocity = 0;
+        target = (Math.round(target / step) - direction) * step;
+        idleMs = 0;
     }
 
-    for (const [label, symbol, direction, side] of [
-        ["Previous movie", "‹", 1, "prev"],
-        ["Next movie", "›", -1, "next"],
-    ]) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = `ring-arrow ${side}`;
-        button.setAttribute("aria-label", label);
-        button.textContent = symbol;
-        button.addEventListener("click", () => rotateBy(direction));
-        container.append(button);
+    // Takes the short way round to the poster that was clicked.
+    function bringToFront(mesh) {
+        const current = mesh.userData.angle + target;
+        target -= Math.atan2(Math.sin(current), Math.cos(current));
+        idleMs = 0;
     }
 
     const canvas = renderer.domElement;
     canvas.addEventListener("pointerdown", (event) => {
         dragging = true;
-        targetRotation = null;
         velocity = 0;
         dragStartX = lastX = event.clientX;
         canvas.setPointerCapture(event.pointerId);
@@ -245,12 +226,26 @@ export function mountCarousel(container, cards) {
     });
     canvas.addEventListener("pointerup", (event) => {
         dragging = false;
+        idleMs = 0;
         if (Math.abs(event.clientX - dragStartX) < CLICK_TOLERANCE_PX) {
+            target = ring.rotation.y;
             const hit = meshAt(event);
-            if (hit) window.location.href = hit.userData.href;
+            if (!hit) {
+                target = Math.round(target / step) * step;
+            } else if (hit.userData.index === frontIndex()) {
+                window.location.href = hit.userData.href;
+            } else {
+                bringToFront(hit);
+            }
+            return;
         }
+        // Let a flick carry on, then settle with a poster squarely at the front.
+        target = Math.round((ring.rotation.y + velocity * FLICK_PROJECTION) / step) * step;
     });
-    canvas.addEventListener("pointercancel", () => { dragging = false; });
+    canvas.addEventListener("pointercancel", () => {
+        dragging = false;
+        target = Math.round(ring.rotation.y / step) * step;
+    });
     canvas.addEventListener("pointerleave", () => { hovered = null; });
 
     container.tabIndex = 0;
@@ -259,13 +254,12 @@ export function mountCarousel(container, cards) {
     container.addEventListener("keydown", (event) => {
         if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
             event.preventDefault();
-            rotateBy(event.key === "ArrowLeft" ? 1 : -1);
+            rotateBy(event.key === "ArrowLeft" ? -1 : 1);
         } else if (event.key === "Enter") {
-            window.location.href = frontMesh().userData.href;
+            window.location.href = meshes[frontIndex()].userData.href;
         }
     });
 
-    let disposed = false;
     function dispose() {
         disposed = true;
         renderer.setAnimationLoop(null);
@@ -278,30 +272,38 @@ export function mountCarousel(container, cards) {
         renderer.forceContextLoss();
     }
 
-    renderer.setAnimationLoop(() => {
+    let focused = -1;
+    let lastFrame = performance.now();
+    renderer.setAnimationLoop((now) => {
         if (!container.isConnected) return dispose();
+        const elapsed = now - lastFrame;
+        lastFrame = now;
         if (!onScreen) return;
 
-        const focused = document.activeElement === container;
-        if (targetRotation !== null) {
-            ring.rotation.y += (targetRotation - ring.rotation.y) * 0.12;
-            if (Math.abs(targetRotation - ring.rotation.y) < 0.001) targetRotation = null;
-        } else if (!dragging) {
-            velocity *= FRICTION;
-            ring.rotation.y += velocity;
-            if (!hovered && !focused && autoSpin) ring.rotation.y += AUTO_SPIN;
+        if (!dragging) {
+            ring.rotation.y += (target - ring.rotation.y) * ROTATION_EASE;
+
+            const paused = hovered || reducedMotion || count < 2 || document.activeElement === container;
+            idleMs = paused ? 0 : idleMs + elapsed;
+            if (idleMs >= AUTO_ADVANCE_MS) rotateBy(1);
         }
 
         for (const mesh of meshes) {
-            const scale = mesh === hovered ? 1.08 : 1;
+            // 1 when facing the camera, 0 side-on: posters fade out towards the back.
+            const facing = Math.max(0, Math.cos(mesh.userData.angle + ring.rotation.y));
+            mesh.material.opacity = Math.min(1, facing * 3);
+            mesh.material.color.setScalar(0.3 + 0.7 * facing ** 4);
+            const scale = 1 + 0.05 * facing ** 8 + (mesh === hovered ? 0.03 : 0);
             mesh.scale.setScalar(mesh.scale.x + (scale - mesh.scale.x) * 0.15);
         }
 
-        const { title, meta } = (hovered || frontMesh()).userData;
-        if (captionTitle.textContent !== title) {
-            captionTitle.textContent = title;
-            captionMeta.textContent = meta;
+        const front = frontIndex();
+        if (front !== focused) {
+            focused = front;
+            onFocus(cards[front], front);
         }
         renderer.render(scene, camera);
     });
+
+    return { rotateBy };
 }
