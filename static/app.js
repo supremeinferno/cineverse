@@ -101,6 +101,12 @@ function parseTmdbSearch(data, keyword, limit = 24) {
     return { suggestions, cards: finalList.slice(0, limit) };
 }
 
+// Home sections render after page load, so the browser can't jump to /#section itself.
+function scrollToHash() {
+    const target = window.location.hash && document.getElementById(window.location.hash.slice(1));
+    if (target) target.scrollIntoView();
+}
+
 function setHeroBackdrop(hero, url) {
     if (url) hero.style.backgroundImage = `url("${url}")`;
 }
@@ -132,6 +138,8 @@ async function renderFeaturedHero(hero, cards) {
     const content = el("div", "hero-content");
     content.append(text);
     hero.replaceChildren(content);
+    // The hero's height can change once filled, moving the section being linked to.
+    scrollToHash();
 }
 
 function renderHome() {
@@ -158,7 +166,9 @@ function renderHome() {
         for (const feed of HOME_FEEDS) {
             const body = el("div");
             body.append(el("div", "skeleton"));
-            feeds.append(el("h2", "section-title", feed.title), body);
+            const title = el("h2", "section-title", feed.title);
+            title.id = feed.category;
+            feeds.append(title, body);
             apiGet("/home", { category: feed.category, limit: 18 })
                 .then((cards) => {
                     body.replaceChildren(posterRing(cards));
@@ -166,6 +176,7 @@ function renderHome() {
                 })
                 .catch((err) => body.replaceChildren(message(`Could not load: ${err.message}`, true)));
         }
+        scrollToHash();
     };
 
     // Responses can arrive out of order while typing; only the latest may render.
@@ -174,7 +185,7 @@ function renderHome() {
         const searchId = ++latestSearch;
 
         // Keep the query in the URL so the back button returns to these results.
-        history.replaceState(null, "", query ? `/?q=${encodeURIComponent(query)}` : "/");
+        history.replaceState(null, "", query ? `/?q=${encodeURIComponent(query)}` : `/${window.location.hash}`);
 
         if (!query) return showFeeds();
 

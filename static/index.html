@@ -13,7 +13,20 @@
 </head>
 <body>
     <header class="nav">
-        <a class="logo" href="/">Cine<span>Verse</span></a>
+        <a class="logo" href="/">
+            <svg class="logo-mark" viewBox="0 0 24 24" aria-hidden="true">
+                <rect width="24" height="24" rx="6"/>
+                <path d="M9.5 7.2v9.6a.6.6 0 0 0 .92.5l7.5-4.8a.6.6 0 0 0 0-1l-7.5-4.8a.6.6 0 0 0-.92.5z"/>
+            </svg>
+            Cine<span>Verse</span>
+        </a>
+
+        <nav class="nav-links" aria-label="Browse">
+            <a href="/#trending">Trending</a>
+            <a href="/#top_rated">Top Rated</a>
+            <a href="/#upcoming">Upcoming</a>
+            <a href="/#now_playing">Now Playing</a>
+        </nav>
 
         <form class="search" action="/" method="get" role="search">
             <input id="search-input" type="search" name="q" autocomplete="off"
@@ -25,7 +38,38 @@
     <main id="app"></main>
 
     <footer class="footer">
-        This product uses the TMDB API but is not endorsed or certified by TMDB.
+        <div class="footer-main">
+            <div class="footer-brand">
+                <a class="logo" href="/">
+                    <svg class="logo-mark" viewBox="0 0 24 24" aria-hidden="true">
+                <rect width="24" height="24" rx="6"/>
+                <path d="M9.5 7.2v9.6a.6.6 0 0 0 .92.5l7.5-4.8a.6.6 0 0 0 0-1l-7.5-4.8a.6.6 0 0 0-.92.5z"/>
+            </svg>
+                    Cine<span>Verse</span>
+                </a>
+                <p>Discover trending films and find what to watch next, with recommendations based on the movies you love.</p>
+            </div>
+
+            <nav class="footer-column" aria-label="Browse movies">
+                <h2>Browse</h2>
+                <a href="/#trending">Trending</a>
+                <a href="/#top_rated">Top Rated</a>
+                <a href="/#upcoming">Upcoming</a>
+                <a href="/#now_playing">Now Playing</a>
+            </nav>
+
+            <nav class="footer-column" aria-label="Project links">
+                <h2>Project</h2>
+                <a href="https://github.com/supremeinferno/movies-recommender" target="_blank" rel="noopener">GitHub</a>
+                <a href="/docs">API Docs</a>
+                <a href="https://www.themoviedb.org" target="_blank" rel="noopener">TMDB</a>
+            </nav>
+        </div>
+
+        <div class="footer-bottom">
+            <span>© 2026 CineVerse</span>
+            <span>This product uses the TMDB API but is not endorsed or certified by TMDB.</span>
+        </div>
     </footer>
 
     <script src="/static/app.js"></script>
